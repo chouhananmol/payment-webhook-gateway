@@ -1,0 +1,91 @@
+{
+  "info": {
+    "name": "Payment Webhook Gateway",
+    "description": "Signed webhook requests for Stripe and Razorpay endpoints. Pre-request scripts compute valid HMAC signatures automatically using the test secrets.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "stripeSecret", "value": "whsec_test_secret" },
+    { "key": "razorpaySecret", "value": "rzp_test_secret" }
+  ],
+  "item": [
+    {
+      "name": "Stripe webhook (valid signature)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const payload = JSON.stringify({ id: 'evt_' + Date.now(), type: 'payment_intent.succeeded' });",
+              "const ts = Math.floor(Date.now() / 1000);",
+              "const sig = CryptoJS.HmacSHA256(ts + '.' + payload, pm.variables.get('stripeSecret')).toString();",
+              "pm.variables.set('stripePayload', payload);",
+              "pm.variables.set('stripeSigHeader', 't=' + ts + ',v1=' + sig);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Stripe-Signature", "value": "{{stripeSigHeader}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{{stripePayload}}" },
+        "url": "{{baseUrl}}/webhooks/stripe"
+      }
+    },
+    {
+      "name": "Razorpay webhook (valid signature)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const payload = JSON.stringify({ event: 'payment.captured', payload: { payment: { entity: { id: 'pay_' + Date.now() } } } });",
+              "const sig = CryptoJS.HmacSHA256(payload, pm.variables.get('razorpaySecret')).toString();",
+              "pm.variables.set('rzpPayload', payload);",
+              "pm.variables.set('rzpSigHeader', sig);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Razorpay-Signature", "value": "{{rzpSigHeader}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{{rzpPayload}}" },
+        "url": "{{baseUrl}}/webhooks/razorpay"
+      }
+    },
+    {
+      "name": "Forged signature (expect 401)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Stripe-Signature", "value": "t=123,v1=deadbeef" }
+        ],
+        "body": { "mode": "raw", "raw": "{\"id\":\"evt_forged\",\"type\":\"payment_intent.succeeded\"}" },
+        "url": "{{baseUrl}}/webhooks/stripe"
+      }
+    },
+    {
+      "name": "Dead-letter queue",
+      "request": { "method": "GET", "url": "{{baseUrl}}/admin/webhooks/dead-letter" }
+    },
+    {
+      "name": "Replay event",
+      "request": { "method": "POST", "url": "{{baseUrl}}/admin/webhooks/1/replay" }
+    },
+    {
+      "name": "Metrics",
+      "request": { "method": "GET", "url": "{{baseUrl}}/actuator/metrics/webhooks.processed" }
+    }
+  ]
+}

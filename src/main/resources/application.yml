@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: payment-webhook-gateway
+
+  datasource:
+    # H2 by default
+    # Switch to PostgreSQL with SPRING_PROFILES_ACTIVE=postgres (see docker-compose.yml)
+    url: jdbc:h2:mem:webhooks;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+  flyway:
+    enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, metrics
+
+webhooks:
+  stripe:
+    endpoint-secret: ${STRIPE_ENDPOINT_SECRET:whsec_test_secret}
+  razorpay:
+    webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:rzp_test_secret}
+
+logging:
+  level:
+    dev.anmol.webhooks: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:webhooks}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: validate   # schema owned by Flyway, Hibernate only validates
+  flyway:
+    enabled: true
