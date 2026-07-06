@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -32,21 +31,28 @@ public class WebhookIngestionService {
 
     private final Map<PaymentProviderType, PaymentProvider> providers;
     private final WebhookEventRepository repository;
+    private final WebhookEventWriter writer;
     private final WebhookProcessingService processingService;
 
     public WebhookIngestionService(List<PaymentProvider> providerList,
                                    WebhookEventRepository repository,
+                                   WebhookEventWriter writer,
                                    WebhookProcessingService processingService) {
         this.providers = new EnumMap<>(PaymentProviderType.class);
         providerList.forEach(p -> this.providers.put(p.type(), p));
         this.repository = repository;
+        this.writer = writer;
         this.processingService = processingService;
     }
 
     /**
+     * Not @Transactional on purpose. The durable insert runs in its own
+     * transaction inside {@link WebhookEventWriter} so a losing race throws a
+     * DataIntegrityViolationException that we can catch here cleanly, rather
+     * than poisoning an enclosing transaction into an UnexpectedRollback.
+     *
      * @return the persisted event, or the previously stored duplicate.
      */
-    @Transactional
     public IngestionResult ingest(PaymentProviderType providerType,
                                   String rawPayload,
                                   String signatureHeader) {
@@ -72,7 +78,7 @@ public class WebhookIngestionService {
         // one wins.
         WebhookEvent event = new WebhookEvent(providerType, eventId, eventType, rawPayload);
         try {
-            event = repository.saveAndFlush(event);
+            event = writer.insertNew(event);
         } catch (DataIntegrityViolationException e) {
             log.info("Concurrent duplicate webhook ignored: provider={} eventId={}",
                     providerType, eventId);

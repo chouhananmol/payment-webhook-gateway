@@ -34,8 +34,11 @@ public class WebhookEvent {
     @Column(name = "event_type", nullable = false, length = 128)
     private String eventType;
 
-    @Lob
-    @Column(name = "raw_payload", nullable = false)
+    // Not @Lob: on PostgreSQL @Lob maps a String to a large-object/CLOB type,
+    // which fails ddl-auto: validate against the migration's TEXT column (the
+    // driver reports TEXT as VARCHAR). A plain String column typed as text
+    // matches on both PostgreSQL and H2.
+    @Column(name = "raw_payload", nullable = false, columnDefinition = "text")
     private String rawPayload;
 
     @Enumerated(EnumType.STRING)
