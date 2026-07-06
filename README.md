@@ -85,4 +85,4 @@ Java 17, Spring Boot 3.3, Spring Data JPA, Spring Retry, Flyway, PostgreSQL / H2
 
 ---
 
-*Built by a backend engineer working on payments infrastructure (Java/Spring Boot/AWS SQS) at a fintech processing live transaction volume.*
+*Built by a backend engineer working on payments infrastructure (Java/Spring Boot/AWS SQS) at a fintech.*
