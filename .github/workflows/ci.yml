@@ -15,5 +15,21 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
+
+      # Runs unit tests, the H2 flow test, the concurrency race test and the
+      # Testcontainers PostgreSQL test (Docker is available on the runner),
+      # then generates the JaCoCo coverage report.
       - name: Build and test
         run: mvn -B verify
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco
+          if-no-files-found: ignore
+
+      # Confirms the image still builds. Not pushed anywhere.
+      - name: Build Docker image
+        run: docker build -t payment-webhook-gateway:ci .

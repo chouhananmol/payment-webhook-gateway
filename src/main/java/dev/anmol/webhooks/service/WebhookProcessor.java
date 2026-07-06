@@ -6,8 +6,10 @@ import dev.anmol.webhooks.exception.WebhookProcessingException;
 import dev.anmol.webhooks.repository.WebhookEventRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
@@ -32,6 +34,7 @@ public class WebhookProcessor {
     private final PaymentEventHandler eventHandler;
     private final Counter processedCounter;
     private final Counter deadLetterCounter;
+    private final Timer processingTimer;
 
     public WebhookProcessor(WebhookEventRepository repository,
                             PaymentEventHandler eventHandler,
@@ -40,6 +43,10 @@ public class WebhookProcessor {
         this.eventHandler = eventHandler;
         this.processedCounter = meterRegistry.counter("webhooks.processed");
         this.deadLetterCounter = meterRegistry.counter("webhooks.dead_lettered");
+        this.processingTimer = Timer.builder("webhooks.processing.latency")
+                .description("Time spent in business-logic handling of a webhook event")
+                .publishPercentileHistogram()
+                .register(meterRegistry);
     }
 
     @Retryable(
@@ -56,9 +63,18 @@ public class WebhookProcessor {
             return; // Another worker finished it.
         }
 
+        // Correlation context so every log line for this event is greppable
+        // and traceable through the async pipeline.
+        MDC.put("webhookEventId", String.valueOf(eventId));
+        MDC.put("externalEventId", event.getExternalEventId());
+        MDC.put("provider", String.valueOf(event.getProvider()));
+
         event.markProcessing();
         try {
-            eventHandler.handle(event);
+            processingTimer.recordCallable(() -> {
+                eventHandler.handle(event);
+                return null;
+            });
             event.markProcessed();
             processedCounter.increment();
             log.info("Processed webhook: provider={} eventId={} type={} attempts={}",
@@ -69,6 +85,10 @@ public class WebhookProcessor {
             repository.saveAndFlush(event);
             throw new WebhookProcessingException(
                     "Attempt " + event.getAttemptCount() + " failed for event " + eventId, e);
+        } finally {
+            MDC.remove("webhookEventId");
+            MDC.remove("externalEventId");
+            MDC.remove("provider");
         }
     }
 
