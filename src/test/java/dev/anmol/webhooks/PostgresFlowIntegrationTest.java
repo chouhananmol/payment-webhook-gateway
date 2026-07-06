@@ -41,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("postgres")
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 class PostgresFlowIntegrationTest {
 
     private static final String STRIPE_SECRET = "whsec_test_secret";
